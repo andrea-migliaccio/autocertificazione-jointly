@@ -231,7 +231,12 @@ def extract_structured_data_from_images(images: list[bytes], hint: str = "") -> 
 
 
 def _build_system_prompt(hint: str = "") -> str:
-    base = "Sei un estrattore documentale preciso."
+    base = (
+        "Sei un estrattore documentale preciso. "
+        "Estrai SOLO informazioni esplicitamente presenti nel documento. "
+        "NON inventare, NON indovinare, NON usare date odierne o di default. "
+        "Se un dato non è chiaramente leggibile nel documento, restituisci null."
+    )
     if hint:
         return f"{base} {hint}"
     return base
@@ -248,12 +253,12 @@ Campi richiesti:
 - partita_iva: P.IVA dell'ente
 - codice_fiscale_ente: codice fiscale dell'ente (se presente, diverso dalla P.IVA)
 - numero_documento: numero della ricevuta/fattura
-- data_documento: data della ricevuta (formato dd/mm/yyyy)
+- data_documento: data di emissione della ricevuta o data di pagamento, nel formato dd/mm/yyyy. ATTENZIONE: estrai SOLO la data esplicitamente scritta nel documento. NON inventare, NON indovinare, NON usare la data odierna. Se la data non è chiaramente indicata nel documento, usa null.
 - importo: importo totale pagato (con virgola decimale italiana, es. "50,00")
 - causale: descrizione della spesa / causale di pagamento
 - pagatore: nome di chi ha effettuato il pagamento (se indicato nella ricevuta)
 
-Usa null se un campo non è presente o se il pagatore non è esplicitamente indicato."""
+IMPORTANTE: usa null per ogni campo il cui valore non è ESPLICITAMENTE presente nel documento. Non inventare o dedurre valori non scritti chiaramente."""
 
     if text:
         return f"{header}\n\nRicevuta:\n----------------\n{text}\n----------------"
@@ -480,7 +485,7 @@ def main():
 
     if missing:
         print(f"ERRORE: Dati mancanti dalla ricevuta: {', '.join(missing)}")
-        print("Compilare manualmente o fornire una ricevuta più dettagliata.")
+        print("Compilare manualmente o fornire una ricevuta più dettagliata. In alternativa usare l'argomento --hint per guidare l'estrazione (es. '--hint \"La data è indicata come 'Data: 01/02/2025'\"').")
         sys.exit(1)
 
     print("Compilazione PDF...")
