@@ -7,7 +7,7 @@ testo alle coordinate dei placeholder.
 
 Uso:
 
-    python autofill.py ricevuta.pdf template.pdf output.pdf
+    python autofill.py ricevuta.pdf template.pdf
 
 Dipendenze:
 
@@ -346,9 +346,13 @@ def main():
     )
     parser.add_argument("ricevuta", help="PDF della ricevuta")
     parser.add_argument("template", help="PDF del template autocertificazione")
-    parser.add_argument("output", help="PDF di output compilato")
 
     args = parser.parse_args()
+
+    # Genera nome output: XXXX.pdf -> XXXX-autocertificazione.pdf
+    ricevuta_dir = os.path.dirname(os.path.abspath(args.ricevuta))
+    ricevuta_base = os.path.splitext(os.path.basename(args.ricevuta))[0]
+    output_pdf = os.path.join(ricevuta_dir, f"{ricevuta_base}-autocertificazione.pdf")
 
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY non configurata")
@@ -395,9 +399,9 @@ def main():
         sys.exit(1)
 
     print("Compilazione PDF...")
-    fill_pdf_overlay(args.template, args.output, extracted, bf_cf)
+    fill_pdf_overlay(args.template, output_pdf, extracted, bf_cf)
 
-    print(f"PDF generato: {args.output}")
+    print(f"PDF generato: {output_pdf}")
 
 
 if __name__ == "__main__":

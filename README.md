@@ -68,20 +68,23 @@ Struttura di `config.json`:
 ## Uso
 
 ```bash
-python autofill.py ricevuta.pdf template.pdf output.pdf
+python autofill.py ricevuta.pdf template.pdf
 ```
+
+Il file di output viene generato automaticamente nella stessa cartella della ricevuta, con il nome `<ricevuta>-autocertificazione.pdf`.
 
 | Argomento | Descrizione |
 |-----------|-------------|
 | `ricevuta.pdf` | PDF della ricevuta/fattura da cui estrarre i dati |
 | `template.pdf` | PDF del modulo di autocertificazione Jointly (con carta d'identità allegata) |
-| `output.pdf` | Percorso del PDF compilato in uscita |
 
 ### Esempio
 
 ```bash
-python autofill.py "Contributo_Volontario.pdf" "Autocertificazione_Generico.pdf" "output.pdf"
+python autofill.py "Contributo_Volontario.pdf" "Autocertificazione_Generico.pdf"
 ```
+
+Produce `Contributo_Volontario-autocertificazione.pdf` nella stessa cartella della ricevuta.
 
 ## Come funziona
 
