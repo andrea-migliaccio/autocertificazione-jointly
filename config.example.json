@@ -15,5 +15,6 @@
       "codice_fiscale": "BNCLRA82C45H501Y"
     }
   ],
-  "modello_openai": "gpt-4o"
+  "modello_openai": "gpt-4o",
+  "template_pdf": "C:\\Users\\MarioRossi\\Documents\\Welfare\\Autocertificazione_Template.pdf"
 }

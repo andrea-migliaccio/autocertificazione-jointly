@@ -7,7 +7,7 @@ testo alle coordinate dei placeholder.
 
 Uso:
 
-    python autofill.py ricevuta.pdf template.pdf
+    python autofill.py ricevuta.pdf
 
 Dipendenze:
 
@@ -65,6 +65,8 @@ FAMILIARI = {
     fam["codice_fiscale"]: (fam["nome"], fam["parentela"], fam["codice_fiscale"])
     for fam in CFG.get("familiari", [])
 }
+
+TEMPLATE_PDF = CFG.get("template_pdf", "")
 
 PAGE_HEIGHT = 842  # A4 height in points
 
@@ -345,9 +347,13 @@ def main():
         description="Compila autocertificazione da ricevuta PDF"
     )
     parser.add_argument("ricevuta", help="PDF della ricevuta")
-    parser.add_argument("template", help="PDF del template autocertificazione")
 
     args = parser.parse_args()
+
+    if not TEMPLATE_PDF or not os.path.exists(TEMPLATE_PDF):
+        print(f"ERRORE: Template PDF non trovato: '{TEMPLATE_PDF}'")
+        print("Configurare 'template_pdf' in config.json con il percorso del modulo di autocertificazione.")
+        sys.exit(1)
 
     # Genera nome output: XXXX.pdf -> XXXX-autocertificazione.pdf
     ricevuta_dir = os.path.dirname(os.path.abspath(args.ricevuta))
@@ -399,7 +405,7 @@ def main():
         sys.exit(1)
 
     print("Compilazione PDF...")
-    fill_pdf_overlay(args.template, output_pdf, extracted, bf_cf)
+    fill_pdf_overlay(TEMPLATE_PDF, output_pdf, extracted, bf_cf)
 
     print(f"PDF generato: {output_pdf}")
 

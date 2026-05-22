@@ -53,7 +53,8 @@ Struttura di `config.json`:
       "codice_fiscale": "BNCLRA82C45H501Y"
     }
   ],
-  "modello_openai": "gpt-4o"
+  "modello_openai": "gpt-4o",
+  "template_pdf": "C:\\Users\\MarioRossi\\Documents\\Welfare\\Autocertificazione_Template.pdf"
 }
 ```
 
@@ -64,11 +65,12 @@ Struttura di `config.json`:
 | `familiari` | Lista dei familiari art. 12 TUIR (coniuge, figli, genitori, nonni) |
 | `familiari[].parentela` | Relazione con il dipendente |
 | `modello_openai` | Modello OpenAI da usare (default: `gpt-4o`) |
+| `template_pdf` | Percorso assoluto del PDF del modulo di autocertificazione Jointly (con carta d'identità allegata) |
 
 ## Uso
 
 ```bash
-python autofill.py ricevuta.pdf template.pdf
+python autofill.py ricevuta.pdf
 ```
 
 Il file di output viene generato automaticamente nella stessa cartella della ricevuta, con il nome `<ricevuta>-autocertificazione.pdf`.
@@ -76,12 +78,13 @@ Il file di output viene generato automaticamente nella stessa cartella della ric
 | Argomento | Descrizione |
 |-----------|-------------|
 | `ricevuta.pdf` | PDF della ricevuta/fattura da cui estrarre i dati |
-| `template.pdf` | PDF del modulo di autocertificazione Jointly (con carta d'identità allegata) |
+
+Il template di autocertificazione viene letto da `config.json` (campo `template_pdf`).
 
 ### Esempio
 
 ```bash
-python autofill.py "Contributo_Volontario.pdf" "Autocertificazione_Generico.pdf"
+python autofill.py "Contributo_Volontario.pdf"
 ```
 
 Produce `Contributo_Volontario-autocertificazione.pdf` nella stessa cartella della ricevuta.
