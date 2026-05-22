@@ -12,7 +12,7 @@ ATTENZIONE, l'AI può sbagliare, ricontrollare sempre i file prodotti prima di s
 ## Installazione
 
 ```bash
-pip install pdfplumber openai pypdf python-dotenv reportlab pydantic
+pip install pdfplumber openai pypdf python-dotenv reportlab pydantic pymupdf
 ```
 
 ## Configurazione
@@ -92,9 +92,20 @@ Produce `Contributo_Volontario-autocertificazione.pdf` nella stessa cartella del
 ## Come funziona
 
 1. **Estrazione testo**: legge il testo dalla ricevuta PDF con `pdfplumber`
-2. **Analisi LLM**: invia il testo a OpenAI per estrarre i dati strutturati (beneficiario, ente, importo, data, causale, P.IVA, pagatore)
-3. **Risoluzione beneficiario**: confronta il nome del beneficiario con dichiarante e familiari per ricavare il codice fiscale
-4. **Compilazione**: genera un overlay PDF con `reportlab` e lo sovrappone al template con `pypdf`
+2. **Verifica leggibilità**: controlla che il testo estratto sia effettivamente leggibile (alcuni PDF usano font custom con encoding non standard che producono spazzatura tipo `(cid:XX)`)
+3. **Fallback vision**: se il testo non è leggibile, renderizza il PDF come immagine con `pymupdf` e la invia all'API OpenAI vision per l'analisi
+4. **Analisi LLM**: invia il testo (o l'immagine) a OpenAI per estrarre i dati strutturati (beneficiario, ente, importo, data, causale, P.IVA, pagatore)
+5. **Risoluzione beneficiario**: confronta il nome del beneficiario con dichiarante e familiari per ricavare il codice fiscale
+6. **Compilazione**: genera un overlay PDF con `reportlab` e lo sovrappone al template con `pypdf`
+
+### Parametro `--hint`
+
+Se l'AI sbaglia a interpretare qualche campo (es. pagatore non correttamente identificato in PDF tabulari), si può forzare con un'istruzione aggiuntiva:
+
+```bash
+python autofill.py ricevuta.pdf --hint "Il pagatore è BRAMBILLA MATTEO"
+python autofill.py ricevuta.pdf --hint "La partita IVA dell'ente è 12621570154"
+```
 
 ### Logica "PERSONALMENTE / DAL FAMILIARE"
 
@@ -110,5 +121,5 @@ Produce `Contributo_Volontario-autocertificazione.pdf` nella stessa cartella del
 | `File di configurazione non trovato` | Creare `config.json` a partire da `config.example.json` |
 | `OPENAI_API_KEY non configurata` | Creare il file `.env` con la chiave API |
 | `Beneficiario non riconosciuto` | Il nome estratto dalla ricevuta non corrisponde a nessun nominativo in `config.json`. Verificare i nomi configurati |
-| `Nessun testo estraibile` | La ricevuta è probabilmente un'immagine scannerizzata, non un PDF testuale |
-| `Dati mancanti dalla ricevuta` | La ricevuta non contiene tutti i campi necessari (data, importo, ente) |
+| `Nessun testo estraibile` | Il PDF non contiene né testo estraibile né immagini analizzabili |
+| `Dati mancanti dalla ricevuta` | La ricevuta non contiene tutti i campi necessari (data, importo, ente). Provare con `--hint` |

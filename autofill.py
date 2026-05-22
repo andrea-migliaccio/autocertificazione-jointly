@@ -7,11 +7,11 @@ testo alle coordinate dei placeholder.
 
 Uso:
 
-    python autofill.py ricevuta.pdf
+    python autofill.py ricevuta.pdf [--hint "istruzione aggiuntiva"]
 
 Dipendenze:
 
-    pip install pdfplumber openai pypdf python-dotenv reportlab pydantic
+    pip install pdfplumber openai pypdf python-dotenv reportlab pydantic pymupdf
 
 Variabili ambiente richieste:
 
@@ -21,6 +21,7 @@ Variabili ambiente richieste:
 from __future__ import annotations
 
 import argparse
+import base64
 import io
 import json
 import os
@@ -29,6 +30,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
+import fitz
 import pdfplumber
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -102,6 +104,29 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     return "\n".join(chunks)
 
 
+def is_readable_text(text: str) -> bool:
+    """Verifica se il testo estratto è leggibile (non garbled da font custom)."""
+    if not text.strip():
+        return False
+    # Font custom con CID mapping: pdfplumber produce "(cid:XX)"
+    if "(cid:" in text:
+        return False
+    # Conta caratteri ASCII stampabili + lettere accentate comuni
+    normal = sum(1 for c in text if c.isascii() or c in "àèéìòùÀÈÉÌÒÙ€")
+    return normal / len(text) > 0.5
+
+
+def render_pdf_to_images(pdf_path: str) -> list[bytes]:
+    """Renderizza le pagine del PDF come immagini PNG con pymupdf."""
+    doc = fitz.open(pdf_path)
+    images = []
+    for page in doc:
+        pix = page.get_pixmap(dpi=200)
+        images.append(pix.tobytes("png"))
+    doc.close()
+    return images
+
+
 # ============================================================
 # NORMALIZATION
 # ============================================================
@@ -153,11 +178,67 @@ def normalize_piva(piva: Optional[str]) -> Optional[str]:
 # LLM EXTRACTION
 # ============================================================
 
-def extract_structured_data(text: str) -> ReceiptData:
-    client = OpenAI()
+def extract_structured_data(text: str, hint: str = "") -> ReceiptData:
+    """Estrae dati strutturati da testo leggibile."""
+    client = OpenAI(timeout=60)
 
-    prompt = f"""
-Estrai i dati dalla seguente ricevuta.
+    prompt = _build_prompt(text)
+    system = _build_system_prompt(hint)
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception as e:
+        print(f"ERRORE nella chiamata API OpenAI: {e}")
+        sys.exit(1)
+
+    return _parse_response(response)
+
+
+def extract_structured_data_from_images(images: list[bytes], hint: str = "") -> ReceiptData:
+    """Estrae dati strutturati da immagini del PDF (fallback vision)."""
+    client = OpenAI(timeout=60)
+
+    prompt = _build_prompt(None)
+    system = _build_system_prompt(hint)
+
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for img_bytes in images:
+        b64 = base64.b64encode(img_bytes).decode()
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{b64}"}
+        })
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": content}
+            ]
+        )
+    except Exception as e:
+        print(f"ERRORE nella chiamata API OpenAI: {e}")
+        sys.exit(1)
+
+    return _parse_response(response)
+
+
+def _build_system_prompt(hint: str = "") -> str:
+    base = "Sei un estrattore documentale preciso."
+    if hint:
+        return f"{base} {hint}"
+    return base
+
+
+def _build_prompt(text: str | None) -> str:
+    header = """Estrai i dati dalla seguente ricevuta.
 
 Rispondi SOLO con JSON valido.
 
@@ -172,28 +253,14 @@ Campi richiesti:
 - causale: descrizione della spesa / causale di pagamento
 - pagatore: nome di chi ha effettuato il pagamento (se indicato nella ricevuta)
 
-Usa null se un campo non è presente o se il pagatore non è esplicitamente indicato.
+Usa null se un campo non è presente o se il pagatore non è esplicitamente indicato."""
 
-Ricevuta:
-----------------
-{text}
-----------------
-"""
+    if text:
+        return f"{header}\n\nRicevuta:\n----------------\n{text}\n----------------"
+    return f"{header}\n\nAnalizza l'immagine della ricevuta allegata."
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "Sei un estrattore documentale preciso."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
 
+def _parse_response(response) -> ReceiptData:
     raw = response.choices[0].message.content.strip()
 
     raw = raw.removeprefix("```json")
@@ -281,12 +348,17 @@ def create_overlay(data: ReceiptData, beneficiario_cf: str) -> io.BytesIO:
     # (diverso dal dichiarante Andrea Migliaccio)
     pagatore_cf = None
     if data.pagatore:
-        # Cerca il pagatore nella mappa familiari per nome
         pagatore_upper = data.pagatore.upper()
-        for cf, (nome, parentela, _) in FAMILIARI.items():
-            if nome.upper() in pagatore_upper or pagatore_upper in nome.upper():
-                pagatore_cf = cf
-                break
+        # Controlla che non sia il dichiarante
+        is_dichiarante = all(
+            part in pagatore_upper for part in DICHIARANTE_NOME.upper().split()
+        )
+        if not is_dichiarante:
+            # Cerca il pagatore nella mappa familiari per parole del nome
+            for cf, (nome, parentela, _) in FAMILIARI.items():
+                if all(part in pagatore_upper for part in nome.upper().split()):
+                    pagatore_cf = cf
+                    break
 
     if pagatore_cf:
         familiare_info = FAMILIARI[pagatore_cf]
@@ -347,6 +419,11 @@ def main():
         description="Compila autocertificazione da ricevuta PDF"
     )
     parser.add_argument("ricevuta", help="PDF della ricevuta")
+    parser.add_argument(
+        "--hint",
+        default="",
+        help="Istruzione aggiuntiva per l'AI (es. 'Il pagatore è MIGLIACCIO MATTEO')",
+    )
 
     args = parser.parse_args()
 
@@ -366,12 +443,14 @@ def main():
     print("Estrazione testo dal PDF...")
     text = extract_text_from_pdf(args.ricevuta)
 
-    if not text.strip():
-        print("ERRORE: Nessun testo estraibile dalla ricevuta.")
-        sys.exit(1)
-
     print("Estrazione dati strutturati...")
-    extracted = extract_structured_data(text)
+    print(text[:200] + "\n...")  # Mostra un'anteprima del testo estratto
+    if is_readable_text(text):
+        extracted = extract_structured_data(text, hint=args.hint)
+    else:
+        print("  Testo non leggibile, fallback a modalità visione...")
+        images = render_pdf_to_images(args.ricevuta)
+        extracted = extract_structured_data_from_images(images, hint=args.hint)
 
     print("\n=== DATI ESTRATTI ===")
     print(extracted.model_dump_json(indent=2))
