@@ -123,3 +123,12 @@ python autofill.py ricevuta.pdf --hint "La partita IVA dell'ente è 12621570154"
 | `Beneficiario non riconosciuto` | Il nome estratto dalla ricevuta non corrisponde a nessun nominativo in `config.json`. Verificare i nomi configurati |
 | `Nessun testo estraibile` | Il PDF non contiene né testo estraibile né immagini analizzabili |
 | `Dati mancanti dalla ricevuta` | La ricevuta non contiene tutti i campi necessari (data, importo, ente). Provare con `--hint` |
+
+## Changelog
+
+| Versione | Descrizione |
+|----------|-------------|
+| `9f4e288` | Rilascio iniziale: estrazione dati da ricevuta PDF via LLM e compilazione automatica del modulo di autocertificazione |
+| `5e920e9` | Nome file di output generato automaticamente (`<ricevuta>-autocertificazione.pdf`) |
+| `020f218` | Percorso del template PDF configurabile da `config.json` (`template_pdf`) |
+| `cff5e41` | Fallback vision per PDF con font non standard; parametro `--hint` per istruzioni aggiuntive all'AI |
