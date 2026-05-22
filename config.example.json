@@ -1,0 +1,19 @@
+{
+  "dichiarante": {
+    "nome": "MARIO ROSSI",
+    "codice_fiscale": "RSSMRA80A01H501Z"
+  },
+  "familiari": [
+    {
+      "nome": "Giulia Rossi",
+      "parentela": "Figlio",
+      "codice_fiscale": "RSSGLI10B15F205X"
+    },
+    {
+      "nome": "Laura Bianchi",
+      "parentela": "Coniuge",
+      "codice_fiscale": "BNCLRA82C45H501Y"
+    }
+  ],
+  "modello_openai": "gpt-4o"
+}
