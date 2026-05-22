@@ -1,6 +1,8 @@
 # Autofill Autocertificazione Welfare
 
-Compila automaticamente il modulo di dichiarazione sostitutiva (autocertificazione) Jointly, estraendo i dati da una ricevuta PDF tramite LLM e sovrapponendo il testo al template.
+Compila automaticamente il modulo di dichiarazione sostitutiva (autocertificazione) Jointly, estraendo i dati da una ricevuta PDF tramite LLM e sovrapponendo il testo al template. Per comodità si suggerisce di fornire al sistema un file PDF con già mergiata la carta d'identità del pagatore, come specificato dalle istruzioni. Così il file prodotto sarà praticamente solo pronto per un check manuale ed eventualmente la firma.
+
+ATTENZIONE, l'AI può sbagliare, ricontrollare sempre i file prodotti prima di sottometterli nella piattaforma jointly
 
 ## Requisiti
 
