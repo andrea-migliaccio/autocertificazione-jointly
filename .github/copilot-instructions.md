@@ -28,6 +28,10 @@ Motivo: in questo ambiente i comandi `py` e `python` possono puntare a interpret
 
 Quando ti chiedo di fare un commit, assicurati di:
 - Aggiungere un messaggio chiaro e descrittivo al commit.
-- Fai prima un commit con le modifiche effettive, poi aggiungi una voce al changelog con il commit-id, se ci sono modifiche funzionali significative
-- Committa solo il readme
-- pusha tutto
+- Se ci sono modifiche funzionali significative, aggiorna SEMPRE il changelog nel `README.md` con il commit-id.
+- Workflow obbligatorio quando chiedo "commit e push":
+	1. fai un primo commit con le modifiche di codice/documentazione;
+	2. recupera il commit-id;
+	3. aggiungi la riga nel changelog del `README.md` con quel commit-id e descrizione breve;
+	4. fai un secondo commit SOLO del `README.md`;
+	5. pusha tutto.

@@ -2,3 +2,4 @@ config.json
 .env
 lista.txt
 *.png
+__pycache__

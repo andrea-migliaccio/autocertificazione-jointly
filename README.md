@@ -160,3 +160,4 @@ Se il campo manca o e' vuoto, questo passaggio viene saltato.
 | `5e920e9` | Nome file di output generato automaticamente (`<ricevuta>-autocertificazione.pdf`) |
 | `020f218` | Percorso del template PDF configurabile da `config.json` (`template_pdf`) |
 | `cff5e41` | Fallback vision per PDF con font non standard; parametro `--hint` per istruzioni aggiuntive all'AI |
+| `25be622` | Adattamento modello 2026 (campi/radio), supporto firma PNG opzionale e script batch `autofill_all.py` |
