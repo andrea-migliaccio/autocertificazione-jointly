@@ -1,51 +1,72 @@
-"""Estrae le coordinate dei caratteri dal template PDF per trovare le posizioni dei placeholder."""
+"""Analizza un template PDF e propone coordinate per campi e radio del modello 2026."""
+
 import sys
+
 import pdfplumber
 
-template_path = sys.argv[1]
 
-with pdfplumber.open(template_path) as pdf:
-    page = pdf.pages[0]
-    
-    # Dimensioni pagina
+def find_word(words: list[dict], exact_text: str) -> dict | None:
+    for w in words:
+        if w["text"].strip() == exact_text:
+            return w
+    return None
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("Uso: python analyze_template.py <template.pdf>")
+        raise SystemExit(1)
+
+    template_path = sys.argv[1]
+
+    with pdfplumber.open(template_path) as pdf:
+        page = pdf.pages[0]
+        words = page.extract_words(x_tolerance=1, y_tolerance=1)
+
     print(f"Pagina: {page.width} x {page.height}")
+    print(f"Parole estratte: {len(words)}")
     print()
-    
-    # Estrai tutti i caratteri con le loro coordinate
-    chars = page.chars
-    
-    # Raggruppa per riga (per y approssimata)
-    lines = {}
-    for c in chars:
-        y_key = round(c["top"], 0)
-        if y_key not in lines:
-            lines[y_key] = []
-        lines[y_key].append(c)
-    
-    # Ordina per y
-    for y_key in sorted(lines.keys()):
-        line_chars = sorted(lines[y_key], key=lambda c: c["x0"])
-        text = "".join(c["text"] for c in line_chars)
-        
-        # Mostra righe con underscore o numeri di campo interessanti
-        if "_" in text or any(marker in text for marker in ["C.F.", "data", "somma", "€", "favore", "Partita", "qualità", "FAMILIARE"]):
-            # Trova i segmenti di underscore
-            first_x = line_chars[0]["x0"]
-            last_x = line_chars[-1]["x1"]
-            print(f"Y={y_key:6.1f} | x0={first_x:6.1f} x1={last_x:6.1f} | {text}")
-            
-            # Mostra posizioni degli underscore
-            underscore_start = None
-            underscore_end = None
-            for c in line_chars:
-                if c["text"] == "_":
-                    if underscore_start is None:
-                        underscore_start = c["x0"]
-                    underscore_end = c["x1"]
-                else:
-                    if underscore_start is not None:
-                        print(f"   UNDERSCORE: x0={underscore_start:6.1f} x1={underscore_end:6.1f}")
-                        underscore_start = None
-                        underscore_end = None
-            if underscore_start is not None:
-                print(f"   UNDERSCORE: x0={underscore_start:6.1f} x1={underscore_end:6.1f}")
+
+    anchors = {
+        "label_nome": find_word(words, "Nome"),
+        "label_codice": find_word(words, "Codice"),
+        "label_me_stesso": find_word(words, "stesso"),
+        "label_familiare": find_word(words, "Familiare"),
+        "label_coniuge": find_word(words, "Coniuge"),
+        "label_figli": find_word(words, "Figli"),
+        "label_genitori": find_word(words, "Genitori"),
+        "label_fratelli": find_word(words, "Fratelli/Sorelle"),
+        "label_suoceri": find_word(words, "Suoceri"),
+        "label_nuore": find_word(words, "Nuore/Generi"),
+        "label_luogo": find_word(words, "Luogo"),
+    }
+
+    print("Anchor trovati:")
+    for key, value in anchors.items():
+        if value:
+            print(
+                f"- {key}: x0={value['x0']:.1f}, x1={value['x1']:.1f}, "
+                f"top={value['top']:.1f}, text={value['text']}"
+            )
+        else:
+            print(f"- {key}: NON TROVATO")
+
+    print()
+    print("Coordinate suggerite (overlay):")
+    print("- nome_dichiarante: x=36, y_top=160")
+    print("- cf_dichiarante: x=328, y_top=160")
+    print("- radio_me_stesso: x=37, y_top=258")
+    print("- radio_familiare: x=37, y_top=277")
+    print("- nome_familiare: x=36, y_top=322")
+    print("- cf_familiare: x=218, y_top=322")
+    print("- parentela_coniuge: x=391, y_top=314")
+    print("- parentela_figli: x=391, y_top=324")
+    print("- parentela_genitori: x=391, y_top=334")
+    print("- parentela_fratelli_sorelle: x=463, y_top=314")
+    print("- parentela_suoceri: x=463, y_top=324")
+    print("- parentela_nuore_generi: x=463, y_top=334")
+    print("- luogo_data: x=36, y_top=732")
+
+
+if __name__ == "__main__":
+    main()

@@ -3,6 +3,7 @@
     "nome": "MARIO ROSSI",
     "codice_fiscale": "RSSMRA80A01H501Z"
   },
+  "luogo": "Milano",
   "familiari": [
     {
       "nome": "Giulia Rossi",
@@ -16,5 +17,6 @@
     }
   ],
   "modello_openai": "gpt-4o",
+  "firma_png": "C:\\Users\\MarioRossi\\Documents\\Welfare\\firma.png",
   "template_pdf": "C:\\Users\\MarioRossi\\Documents\\Welfare\\Autocertificazione_Template.pdf"
 }

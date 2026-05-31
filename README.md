@@ -41,6 +41,7 @@ Struttura di `config.json`:
     "nome": "MARIO ROSSI",
     "codice_fiscale": "RSSMRA80A01H501Z"
   },
+  "luogo": "Milano",
   "familiari": [
     {
       "nome": "Giulia Rossi",
@@ -54,6 +55,7 @@ Struttura di `config.json`:
     }
   ],
   "modello_openai": "gpt-4o",
+  "firma_png": "C:\\Users\\MarioRossi\\Documents\\Welfare\\firma.png",
   "template_pdf": "C:\\Users\\MarioRossi\\Documents\\Welfare\\Autocertificazione_Template.pdf"
 }
 ```
@@ -62,10 +64,12 @@ Struttura di `config.json`:
 |-------|-------------|
 | `dichiarante.nome` | Nome e cognome del dipendente (maiuscolo) |
 | `dichiarante.codice_fiscale` | Codice fiscale del dipendente |
+| `luogo` | Luogo usato nel campo "Luogo e data" (opzionale, default: solo data) |
 | `familiari` | Lista dei familiari art. 12 TUIR (coniuge, figli, genitori, nonni) |
 | `familiari[].parentela` | Relazione con il dipendente |
 | `modello_openai` | Modello OpenAI da usare (default: `gpt-4o`) |
-| `template_pdf` | Percorso assoluto del PDF del modulo di autocertificazione Jointly (con carta d'identità allegata) |
+| `firma_png` | Percorso assoluto firma PNG da applicare nel campo firma (opzionale) |
+| `template_pdf` | Percorso assoluto del PDF del modulo di autocertificazione Jointly (nuovo modello 2026) |
 
 ## Uso
 
@@ -89,6 +93,27 @@ python autofill.py "Contributo_Volontario.pdf"
 
 Produce `Contributo_Volontario-autocertificazione.pdf` nella stessa cartella della ricevuta.
 
+### Esecuzione batch da lista
+
+Se vuoi processare piu' ricevute in una volta, usa `autofill_all.py`.
+
+Formato di `lista.txt` (una riga per file):
+
+```
+C:\\path\\file1.pdf
+C:\\path\\file2.pdf --> Il pagatore e' Mario Rossi
+```
+
+Comandi:
+
+```bash
+python3 autofill_all.py
+python3 autofill_all.py lista.txt
+python3 autofill_all.py lista.txt --stop-on-error
+```
+
+Lo script esegue internamente `autofill.py` per ogni riga, passando `--hint` solo quando presente dopo `-->`.
+
 ## Come funziona
 
 1. **Estrazione testo**: legge il testo dalla ricevuta PDF con `pdfplumber`
@@ -107,12 +132,15 @@ python autofill.py ricevuta.pdf --hint "Il pagatore è BRAMBILLA MATTEO"
 python autofill.py ricevuta.pdf --hint "La partita IVA dell'ente è 12621570154"
 ```
 
-### Logica "PERSONALMENTE / DAL FAMILIARE"
+### Logica "Me stesso / Familiare"
 
-- Se il **pagatore** non è indicato nella ricevuta o è il dichiarante → viene selezionato **PERSONALMENTE**
-- Se il **pagatore** è un familiare presente in `config.json` → viene compilata la sezione **DAL FAMILIARE** con i dati del familiare
+- Se il **beneficiario** (o in fallback il **pagatore**) coincide con un familiare presente in `config.json` → viene selezionato **Familiare** e compilata la sezione familiare (nome, CF e parentela)
+- Altrimenti viene selezionato **Me stesso**
 
-> **Nota**: il campo "In fede (firma autografa)" viene lasciato vuoto per l'apposizione manuale della firma.
+> **Nota**: il campo "Firma" viene lasciato vuoto per l'apposizione manuale.
+
+Se configuri `firma_png`, la firma viene sovrapposta automaticamente nell'area firma del template.
+Se il campo manca o e' vuoto, questo passaggio viene saltato.
 
 ## Errori comuni
 

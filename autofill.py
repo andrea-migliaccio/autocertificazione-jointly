@@ -36,6 +36,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from dotenv import load_dotenv
 
@@ -61,6 +62,7 @@ MODEL = CFG.get("modello_openai", "gpt-4o")
 
 DICHIARANTE_NOME = CFG["dichiarante"]["nome"]
 DICHIARANTE_CF = CFG["dichiarante"]["codice_fiscale"]
+DICHIARANTE_LUOGO = CFG.get("luogo", "")
 
 # Mappa familiari: CF -> (nome, parentela, CF)
 FAMILIARI = {
@@ -69,6 +71,7 @@ FAMILIARI = {
 }
 
 TEMPLATE_PDF = CFG.get("template_pdf", "")
+SIGNATURE_PNG = CFG.get("firma_png", "")
 
 PAGE_HEIGHT = 842  # A4 height in points
 
@@ -296,11 +299,60 @@ def resolve_beneficiario_cf(nome: str) -> str | None:
     return None
 
 
+def resolve_family_cf_from_name(nome: str | None) -> str | None:
+    """Risolvi il CF di un familiare noto dal nome completo/parziale."""
+    if not nome:
+        return None
+    nome_upper = nome.upper()
+    for cf, (nome_fam, _, _) in FAMILIARI.items():
+        if all(part in nome_upper for part in nome_fam.upper().split()):
+            return cf
+    return None
+
+
+def normalize_parentela(parentela: str) -> str | None:
+    """Normalizza le varianti di parentela alle opzioni presenti nel template."""
+    p = parentela.strip().lower()
+    mapping = {
+        "coniuge": "coniuge",
+        "figlio": "figli",
+        "figlia": "figli",
+        "figli": "figli",
+        "genitore": "genitori conviventi",
+        "genitori": "genitori conviventi",
+        "genitori conviventi": "genitori conviventi",
+        "fratello": "fratelli/sorelle conviventi",
+        "sorella": "fratelli/sorelle conviventi",
+        "fratelli": "fratelli/sorelle conviventi",
+        "sorelle": "fratelli/sorelle conviventi",
+        "fratelli/sorelle conviventi": "fratelli/sorelle conviventi",
+        "suocero": "suoceri conviventi",
+        "suocera": "suoceri conviventi",
+        "suoceri": "suoceri conviventi",
+        "suoceri conviventi": "suoceri conviventi",
+        "nuora": "nuore/generi conviventi",
+        "genero": "nuore/generi conviventi",
+        "nuore": "nuore/generi conviventi",
+        "generi": "nuore/generi conviventi",
+        "nuore/generi conviventi": "nuore/generi conviventi",
+    }
+    return mapping.get(p)
+
+
+def pick_familiare_for_template(data: ReceiptData) -> str | None:
+    """Sceglie il familiare da usare nel modello 2026 (beneficiario priorita')."""
+    # Priorita': beneficiario, poi pagatore (se familiare noto)
+    cf = resolve_family_cf_from_name(data.beneficiario)
+    if cf:
+        return cf
+    return resolve_family_cf_from_name(data.pagatore)
+
+
 # ============================================================
 # PDF OVERLAY
 # ============================================================
 
-def create_overlay(data: ReceiptData, beneficiario_cf: str) -> io.BytesIO:
+def create_overlay(data: ReceiptData) -> io.BytesIO:
     """Crea un PDF overlay con i testi posizionati sui placeholder."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -314,72 +366,79 @@ def create_overlay(data: ReceiptData, beneficiario_cf: str) -> io.BytesIO:
         y_bottom = PAGE_HEIGHT - y_top
         c.drawString(x, y_bottom, text)
 
-    # Campo 1: Nome dichiarante (Y=160, underscore x0=56.8..297.8)
-    draw(60, 160, DICHIARANTE_NOME)
+    def mark_radio(x: float, y_top: float):
+        """Riempie il pallino di una radio gia' presente nel template."""
+        y_bottom = PAGE_HEIGHT - y_top
+        c.circle(x, y_bottom, 2.8, stroke=0, fill=1)
 
-    # Campo 2: CF dichiarante (Y=160, underscore x0=317.6..509.0)
-    draw(320, 160, DICHIARANTE_CF)
+    def draw_signature_if_configured(path: str):
+        """Disegna la firma PNG nel campo firma se il percorso e' configurato e valido."""
+        if not path:
+            return
+        if not os.path.exists(path):
+            print(f"Avviso: file firma non trovato, salto firma: {path}")
+            return
+        try:
+            img = ImageReader(path)
+            img_w, img_h = img.getSize()
 
-    # Campo 3: Data spesa (Y=280, underscore x0=356.1..503.6)
-    draw(358, 280, data.data_documento or "")
+            # Box firma nel modello 2026 (zona destra del footer, vicino a 'Firma').
+            box_x = 322
+            box_y_top = 718
+            box_w = 220
+            box_h = 42
 
-    # Campo 4: Importo (Y=294, underscore x0=107.0..236.0)
-    draw(109, 294, data.importo or "")
+            # Mantieni proporzioni adattando l'immagine al box.
+            scale = min(box_w / img_w, box_h / img_h)
+            draw_w = img_w * scale
+            draw_h = img_h * scale
+            draw_x = box_x + (box_w - draw_w) / 2
+            draw_y_bottom = PAGE_HEIGHT - box_y_top - draw_h
 
-    # Campo 5: Causale - prima parte (Y=290, underscore x0=345.0..529.8)
-    causale = data.causale or ""
-    # Se la causale è lunga, la spezziamo su due righe
-    if len(causale) > 45:
-        draw(347, 294, causale[:45])
-        # Continuazione causale (Y=308, underscore x0=56.8..284.4)
-        draw(60, 308, causale[45:])
+            c.drawImage(
+                img,
+                draw_x,
+                draw_y_bottom,
+                width=draw_w,
+                height=draw_h,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        except Exception as e:
+            print(f"Avviso: impossibile applicare la firma PNG ({path}): {e}")
+
+    # Nuovo template 2026 - Informazioni personali
+    draw(36, 157, DICHIARANTE_NOME)
+    draw(328, 157, DICHIARANTE_CF)
+
+    familiare_cf = pick_familiare_for_template(data)
+    if familiare_cf:
+        mark_radio(37, 274)
+        nome_fam, parentela, cf_fam = FAMILIARI[familiare_cf]
+        draw(36, 322, nome_fam)
+        draw(218, 322, cf_fam)
+
+        parentela_key = normalize_parentela(parentela)
+        parentela_radios = {
+            "coniuge": (395, 314),
+            "figli": (395, 324),
+            "genitori conviventi": (395, 334),
+            "fratelli/sorelle conviventi": (467, 314),
+            "suoceri conviventi": (467, 324),
+            "nuore/generi conviventi": (467, 334),
+        }
+        if parentela_key in parentela_radios:
+            x, y = parentela_radios[parentela_key]
+            mark_radio(x, y)
     else:
-        draw(347, 294, causale)
+        # Intestatario/pagatore e' il dichiarante
+        mark_radio(37, 255)
 
-    # Campo 6: Nome beneficiario del servizio (Y=308, underscore x0=301.9..531.5)
-    draw(304, 308, data.beneficiario or "")
-
-    # Campo 7: CF beneficiario del servizio (Y=322, underscore x0=317.6..520.6)
-    draw(320, 322, beneficiario_cf)
-
-    # Campo 8: Ente / struttura (Y=336, underscore x0=98.5..393.8)
-    draw(100, 336, data.ente or "")
-
-    # Campo 9: Partita IVA ente (Y=349, underscore x0=106.5..254.2)
-    # Se manca la P.IVA, usa il codice fiscale dell'ente
-    draw(108, 349, data.partita_iva or data.codice_fiscale_ente or "")
-
-    # Sezione "DAL FAMILIARE" - compilata solo se il pagatore è un familiare noto
-    # (diverso dal dichiarante Andrea Migliaccio)
-    pagatore_cf = None
-    if data.pagatore:
-        pagatore_upper = data.pagatore.upper()
-        # Controlla che non sia il dichiarante
-        is_dichiarante = all(
-            part in pagatore_upper for part in DICHIARANTE_NOME.upper().split()
-        )
-        if not is_dichiarante:
-            # Cerca il pagatore nella mappa familiari per parole del nome
-            for cf, (nome, parentela, _) in FAMILIARI.items():
-                if all(part in pagatore_upper for part in nome.upper().split()):
-                    pagatore_cf = cf
-                    break
-
-    if pagatore_cf:
-        familiare_info = FAMILIARI[pagatore_cf]
-        nome_fam, parentela, cf_fam = familiare_info
-        # Campo 10: Nome familiare pagante (Y=378, x0=311.1..520.3)
-        draw(313, 378, nome_fam)
-        # Campo 11: Qualità / parentela (Y=392, x0=145.7..336.2)
-        draw(148, 392, parentela)
-        # Campo 12: CF familiare pagante (Y=406, x0=92.8..283.5)
-        draw(95, 406, cf_fam)
-    else:
-        # Pagatore è il dichiarante o non specificato -> PERSONALMENTE
-        draw(65, 368, "X", font_size=12)
-
-    # Data in fondo (Y=581) - la firma resta vuota per apposizione manuale
-    draw(386, 581, datetime.now().strftime("%d/%m/%Y"))
+    # Luogo e data in fondo, firma lasciata vuota per firma autografa
+    oggi = datetime.now().strftime("%d/%m/%Y")
+    luogo_data = f"{DICHIARANTE_LUOGO}, {oggi}" if DICHIARANTE_LUOGO else oggi
+    draw(36, 732, luogo_data)
+    draw_signature_if_configured(SIGNATURE_PNG)
 
     c.save()
     buf.seek(0)
@@ -390,10 +449,9 @@ def fill_pdf_overlay(
     template_path: str,
     output_path: str,
     data: ReceiptData,
-    beneficiario_cf: str,
 ):
     """Sovrappone i dati compilati al template PDF."""
-    overlay_buf = create_overlay(data, beneficiario_cf)
+    overlay_buf = create_overlay(data)
 
     template_reader = PdfReader(template_path)
     overlay_reader = PdfReader(overlay_buf)
@@ -461,35 +519,13 @@ def main():
     print(extracted.model_dump_json(indent=2))
     print("=====================\n")
 
-    # Risolvi CF del beneficiario dal nome
-    if not extracted.beneficiario:
-        print("ERRORE: Beneficiario non identificato dalla ricevuta.")
-        sys.exit(1)
-
-    bf_cf = resolve_beneficiario_cf(extracted.beneficiario)
-    if not bf_cf:
-        print(f"ERRORE: Beneficiario '{extracted.beneficiario}' non riconosciuto.")
-        print(f"Nomi noti: {DICHIARANTE_NOME} (dichiarante)")
-        for cf, (nome, par, _) in FAMILIARI.items():
-            print(f"  {nome} ({par})")
-        sys.exit(1)
-
-    # Verifica campi obbligatori
-    missing = []
-    if not extracted.data_documento:
-        missing.append("data_documento")
-    if not extracted.importo:
-        missing.append("importo")
-    if not extracted.ente:
-        missing.append("ente")
-
-    if missing:
-        print(f"ERRORE: Dati mancanti dalla ricevuta: {', '.join(missing)}")
-        print("Compilare manualmente o fornire una ricevuta più dettagliata. In alternativa usare l'argomento --hint per guidare l'estrazione (es. '--hint \"La data è indicata come 'Data: 01/02/2025'\"').")
-        sys.exit(1)
+    # Nel modello 2026, se beneficiario/pagatore non sono leggibili si procede comunque:
+    # verra' selezionato automaticamente "Me stesso".
+    if not extracted.beneficiario and not extracted.pagatore:
+        print("Avviso: beneficiario/pagatore non identificati. Verra' selezionato 'Me stesso'.")
 
     print("Compilazione PDF...")
-    fill_pdf_overlay(TEMPLATE_PDF, output_pdf, extracted, bf_cf)
+    fill_pdf_overlay(TEMPLATE_PDF, output_pdf, extracted)
 
     print(f"PDF generato: {output_pdf}")
 
